@@ -3,8 +3,10 @@ package redis
 import (
 	"context"
 	"encoding/json"
-	"github.com/go-redis/redis/v8"
+	"fmt"
 	"time"
+
+	"github.com/go-redis/redis/v8"
 )
 
 type Client struct {
@@ -13,9 +15,9 @@ type Client struct {
 
 func NewClient(addr, password string, db int) *Client {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: addr,
+		Addr:     addr,
 		Password: password,
-		DB: db,
+		DB:       db,
 	})
 
 	return &Client{rdb: rdb}
@@ -35,7 +37,7 @@ func (c *Client) Get(ctx context.Context, key string, dest interface{}) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return json.Unmarshal([]byte(val), dest)
 }
 
@@ -53,6 +55,24 @@ func (c *Client) ZAdd(ctx context.Context, key string, score float64, member int
 
 func (c *Client) ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]redis.Z, error) {
 	return c.rdb.ZRevRangeWithScores(ctx, key, start, stop).Result()
+}
+
+// ZRangeByScore returns members with scores between min and max
+func (c *Client) ZRangeByScore(ctx context.Context, key string, min, max float64) ([]redis.Z, error) {
+	return c.rdb.ZRangeByScoreWithScores(ctx, key, &redis.ZRangeBy{
+		Min: fmt.Sprintf("%f", min),
+		Max: fmt.Sprintf("%f", max),
+	}).Result()
+}
+
+// ZRemRangeByScore removes members with scores between min and max
+func (c *Client) ZRemRangeByScore(ctx context.Context, key string, min, max float64) (int64, error) {
+	return c.rdb.ZRemRangeByScore(ctx, key, fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Result()
+}
+
+// Expire sets a timeout on a key
+func (c *Client) Expire(ctx context.Context, key string, expiration time.Duration) error {
+	return c.rdb.Expire(ctx, key, expiration).Err()
 }
 
 func (c *Client) Close() error {
