@@ -25,7 +25,7 @@ websocket:
   coinbase_url: "wss://ws-feed.pro.coinbase.com"
 
 metrics:
-  prometheus: 9090
+  prometheus_port: 9090
 
 
 
