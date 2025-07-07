@@ -42,13 +42,6 @@ This project uses **realistic mock data** for portfolio demonstration purposes. 
 - **Market Realism**: Price movements follow realistic patterns
 - **Comprehensive Coverage**: Multiple alert types and market conditions
 
-### 💡 Portfolio Benefits
-- **Demonstrates Technical Skills**: Shows ability to work with complex data structures
-- **Realistic Demo Experience**: Visitors see how the system would work with real data
-- **Complete Feature Showcase**: All system capabilities are demonstrated
-- **Professional Presentation**: Data looks and behaves like real market data
-- **Easy to Understand**: Clear examples of what the system monitors
-
 **Note**: This is mock data for portfolio demonstration. Real-world implementation would connect to live exchange APIs like Binance, Coinbase, etc.
 
 ## ⚡ Quick Start
