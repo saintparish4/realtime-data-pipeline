@@ -33,7 +33,7 @@ func NewService(cfg *config.Config) (*Service, error) {
 		return nil, fmt.Errorf("kafka raw data topic configuration is required")
 	}
 
-	producer := kafka.NewProducer(cfg.Kafka.Brokers, cfg.Kafka.Topics.RawData)
+	producer := kafka.NewProducer(cfg.Kafka.Brokers, cfg.Kafka.Topics.RawData, "ingestion-service")
 
 	return &Service{
 		config:   cfg,

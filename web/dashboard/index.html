@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Data Pipeline Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+    <style>
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .alert-critical { border-left-color: #dc2626; }
+        .alert-high { border-left-color: #ea580c; }
+        .alert-medium { border-left-color: #d97706; }
+        .alert-low { border-left-color: #059669; }
+        .alert-warning { border-left-color: #d97706; }
+        .alert-info { border-left-color: #3b82f6; }
+        .status-healthy { color: #059669; }
+        .status-warning { color: #d97706; }
+        .status-error { color: #dc2626; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-semibold text-gray-900">Real-Time Data Pipeline</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-500">Last updated: <span id="last-updated">-</span></span>
+                    <button id="refresh-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- System Status -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">System Status</p>
+                        <p id="system-status" class="text-lg font-semibold status-healthy">Healthy</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"></path>
+                                <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">Active Alerts</p>
+                        <p id="active-alerts" class="text-lg font-semibold text-gray-900">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">Processed Messages</p>
+                        <p id="processed-messages" class="text-lg font-semibold text-gray-900">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">Anomalies Detected</p>
+                        <p id="anomalies-detected" class="text-lg font-semibold text-gray-900">0</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Price Chart -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">BTC/USD Price</h3>
+                <div class="chart-container">
+                    <canvas id="price-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Volume Chart -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Trading Volume</h3>
+                <div class="chart-container">
+                    <canvas id="volume-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts and Metrics Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Active Alerts -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Active Alerts</h3>
+                <div id="alerts-list" class="space-y-3">
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <p class="mt-2">No active alerts</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Anomaly Detection Alerts -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Anomaly Detection</h3>
+                <div id="anomaly-list" class="space-y-3">
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                        </svg>
+                        <p class="mt-2">No anomalies detected</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trading Volume Alerts -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Volume Alerts</h3>
+                <div id="volume-alerts-list" class="space-y-3">
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                        <p class="mt-2">No volume alerts</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics and Health Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <!-- Recent Metrics -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Recent Metrics</h3>
+                <div id="metrics-list" class="space-y-3">
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <p class="mt-2">No metrics available</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Health -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">System Health</h3>
+                <div id="health-list" class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">Redis</span>
+                        <span class="status-healthy text-sm font-medium">Connected</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">Kafka</span>
+                        <span class="status-healthy text-sm font-medium">Connected</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">PostgreSQL</span>
+                        <span class="status-healthy text-sm font-medium">Connected</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">TimescaleDB</span>
+                        <span class="status-healthy text-sm font-medium">Connected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let priceChart, volumeChart;
+        let wsConnection;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeCharts();
+            loadDashboardData();
+            setupWebSocket();
+            setupRefreshButton();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(loadDashboardData, 30000);
+        });
+
+        // Initialize charts
+        function initializeCharts() {
+            // Price chart
+            const priceCtx = document.getElementById('price-chart').getContext('2d');
+            priceChart = new Chart(priceCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'BTC/USD',
+                        data: [],
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Volume chart
+            const volumeCtx = document.getElementById('volume-chart').getContext('2d');
+            volumeChart = new Chart(volumeCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Volume',
+                        data: [],
+                        backgroundColor: 'rgba(147, 51, 234, 0.8)',
+                        borderColor: 'rgb(147, 51, 234)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load dashboard data
+        async function loadDashboardData() {
+            try {
+                // Load system status
+                try {
+                    const healthResponse = await fetch('/api/v1/health');
+                    if (healthResponse.ok) {
+                        const healthData = await healthResponse.json();
+                        updateSystemStatus(healthData);
+                    } else {
+                        console.error('Health check failed:', healthResponse.status);
+                        updateSystemStatus({ status: 'error' });
+                    }
+                } catch (error) {
+                    console.error('Error loading health data:', error);
+                    updateSystemStatus({ status: 'error' });
+                }
+
+                // Load alerts
+                try {
+                    const alertsResponse = await fetch('/api/v1/alerts');
+                    if (alertsResponse.ok) {
+                        const alertsData = await alertsResponse.json();
+                        updateAlerts(alertsData);
+                    } else {
+                        console.error('Alerts fetch failed:', alertsResponse.status);
+                        updateAlerts([]); // Show empty alerts on error
+                    }
+                } catch (error) {
+                    console.error('Error loading alerts:', error);
+                    updateAlerts([]); // Show empty alerts on error
+                }
+
+                // Load metrics
+                try {
+                    const metricsResponse = await fetch('/api/v1/metrics/BTCUSD');
+                    if (metricsResponse.ok) {
+                        const metricsData = await metricsResponse.json();
+                        updateMetrics(metricsData);
+                    } else {
+                        console.error('Metrics fetch failed:', metricsResponse.status);
+                        updateMetrics([]); // Show empty metrics on error
+                    }
+                } catch (error) {
+                    console.error('Error loading metrics:', error);
+                    updateMetrics([]); // Show empty metrics on error
+                }
+
+                // Update last updated time
+                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+                updateSystemStatus({ status: 'error' });
+            }
+        }
+
+        // Update system status
+        function updateSystemStatus(data) {
+            const statusElement = document.getElementById('system-status');
+            const statusClass = data.status === 'healthy' ? 'status-healthy' : 'status-error';
+            const statusText = data.status === 'healthy' ? 'Healthy' : 'Error';
+            
+            statusElement.className = `text-lg font-semibold ${statusClass}`;
+            statusElement.textContent = statusText;
+        }
+
+        // Update alerts
+        function updateAlerts(alerts) {
+            const alertsList = document.getElementById('alerts-list');
+            const activeAlertsCount = document.getElementById('active-alerts');
+            
+            // Handle null or undefined alerts
+            if (!alerts || !Array.isArray(alerts)) {
+                alerts = [];
+            }
+            
+            activeAlertsCount.textContent = alerts.length;
+
+            if (alerts.length === 0) {
+                alertsList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <p class="mt-2">No active alerts</p>
+                    </div>
+                `;
+                return;
+            }
+
+            alertsList.innerHTML = alerts.map(alert => `
+                <div class="border-l-4 alert-${alert.severity.toLowerCase()} bg-gray-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">${alert.name}</p>
+                            <p class="text-sm text-gray-500">${alert.description}</p>
+                            <p class="text-xs text-gray-400 mt-1">${new Date(alert.triggered_at).toLocaleString()}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Separate alerts by type for the new sections
+            const anomalyAlerts = alerts.filter(alert => 
+                alert.labels && alert.labels.anomaly_type && 
+                (alert.labels.type === 'anomaly' || alert.condition === 'anomaly_detected' || alert.condition === 'trend_reversal')
+            );
+            
+            const volumeAlerts = alerts.filter(alert => 
+                alert.labels && alert.labels.type === 'volume' || 
+                alert.condition.includes('volume') || 
+                alert.name.toLowerCase().includes('volume')
+            );
+
+            updateAnomalyAlerts(anomalyAlerts);
+            updateVolumeAlerts(volumeAlerts);
+        }
+
+        // Update anomaly detection alerts
+        function updateAnomalyAlerts(anomalies) {
+            const anomalyList = document.getElementById('anomaly-list');
+            const anomaliesDetectedCount = document.getElementById('anomalies-detected');
+            
+            if (!anomalies || anomalies.length === 0) {
+                anomalyList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                        </svg>
+                        <p class="mt-2">No anomalies detected</p>
+                    </div>
+                `;
+                if (anomaliesDetectedCount) {
+                    anomaliesDetectedCount.textContent = '0';
+                }
+                return;
+            }
+
+            if (anomaliesDetectedCount) {
+                anomaliesDetectedCount.textContent = anomalies.length;
+            }
+
+            anomalyList.innerHTML = anomalies.map(anomaly => {
+                const confidence = anomaly.current_value ? (anomaly.current_value * 100).toFixed(1) : 'N/A';
+                const method = anomaly.metadata?.method || 'Unknown';
+                const expectedValue = anomaly.metadata?.expected_value ? anomaly.metadata.expected_value.toFixed(2) : 'N/A';
+                const deviation = anomaly.metadata?.deviation ? anomaly.metadata.deviation.toFixed(2) : 'N/A';
+                
+                return `
+                    <div class="border-l-4 alert-${anomaly.severity.toLowerCase()} bg-gray-50 p-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <div class="ml-3 flex-1">
+                                <p class="text-sm font-medium text-gray-900">${anomaly.name}</p>
+                                <p class="text-sm text-gray-500">${anomaly.description}</p>
+                                <div class="mt-2 space-y-1">
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Confidence:</span>
+                                        <span class="font-medium">${confidence}%</span>
+                                    </div>
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Method:</span>
+                                        <span class="font-medium">${method}</span>
+                                    </div>
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Expected:</span>
+                                        <span class="font-medium">${expectedValue}</span>
+                                    </div>
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Deviation:</span>
+                                        <span class="font-medium">${deviation}</span>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-2">${new Date(anomaly.triggered_at).toLocaleString()}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update volume alerts
+        function updateVolumeAlerts(volumeAlerts) {
+            const volumeAlertsList = document.getElementById('volume-alerts-list');
+            
+            if (!volumeAlerts || volumeAlerts.length === 0) {
+                volumeAlertsList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                        <p class="mt-2">No volume alerts</p>
+                    </div>
+                `;
+                return;
+            }
+
+            volumeAlertsList.innerHTML = volumeAlerts.map(alert => {
+                const changePercent = alert.current_value ? alert.current_value.toFixed(1) : 'N/A';
+                const volumeValue = alert.current_value ? alert.current_value.toLocaleString() : 'N/A';
+                
+                return `
+                    <div class="border-l-4 alert-${alert.severity.toLowerCase()} bg-gray-50 p-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <div class="ml-3 flex-1">
+                                <p class="text-sm font-medium text-gray-900">${alert.name}</p>
+                                <p class="text-sm text-gray-500">${alert.description}</p>
+                                <div class="mt-2 space-y-1">
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Current Value:</span>
+                                        <span class="font-medium">${volumeValue}</span>
+                                    </div>
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Threshold:</span>
+                                        <span class="font-medium">${alert.threshold}</span>
+                                    </div>
+                                    ${alert.condition.includes('change') ? `
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Change:</span>
+                                        <span class="font-medium ${alert.current_value >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                            ${alert.current_value >= 0 ? '+' : ''}${changePercent}%
+                                        </span>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                <p class="text-xs text-gray-400 mt-2">${new Date(alert.triggered_at).toLocaleString()}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update metrics
+        function updateMetrics(metrics) {
+            const metricsList = document.getElementById('metrics-list');
+            
+            // Handle null or undefined metrics
+            if (!metrics || !Array.isArray(metrics) || metrics.length === 0) {
+                metricsList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <p class="mt-2">No metrics available</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Update charts with latest data
+            const latestMetrics = metrics.slice(-20); // Last 20 data points
+            
+            priceChart.data.labels = latestMetrics.map(m => new Date(m.timestamp).toLocaleTimeString());
+            priceChart.data.datasets[0].data = latestMetrics.map(m => m.price);
+            priceChart.update();
+
+            volumeChart.data.labels = latestMetrics.map(m => new Date(m.timestamp).toLocaleTimeString());
+            volumeChart.data.datasets[0].data = latestMetrics.map(m => m.volume);
+            volumeChart.update();
+
+            // Update metrics list
+            const latestMetric = metrics[metrics.length - 1];
+            if (latestMetric) {
+                metricsList.innerHTML = `
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Current Price</span>
+                            <span class="text-sm font-medium">$${latestMetric.price?.toFixed(2) || 'N/A'}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">24h Change</span>
+                            <span class="text-sm font-medium ${latestMetric.price_change_24h >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                ${latestMetric.price_change_24h >= 0 ? '+' : ''}${latestMetric.price_change_24h?.toFixed(2) || 'N/A'}%
+                            </span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Volume</span>
+                            <span class="text-sm font-medium">${latestMetric.volume?.toLocaleString() || 'N/A'}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Last Updated</span>
+                            <span class="text-sm font-medium">${new Date(latestMetric.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Setup WebSocket connection
+        function setupWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            wsConnection = new WebSocket(wsUrl);
+            
+            wsConnection.onopen = function() {
+                console.log('WebSocket connected');
+            };
+            
+            wsConnection.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            };
+            
+            wsConnection.onclose = function() {
+                console.log('WebSocket disconnected');
+                // Reconnect after 5 seconds
+                setTimeout(setupWebSocket, 5000);
+            };
+            
+            wsConnection.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        // Handle WebSocket messages
+        function handleWebSocketMessage(data) {
+            // Handle real-time updates
+            if (data.type === 'metric_update') {
+                updateChartsRealtime(data);
+            } else if (data.type === 'alert') {
+                // Show notification for new alerts
+                showNotification(data.message, data.severity);
+            }
+        }
+
+        // Update charts with real-time data
+        function updateChartsRealtime(data) {
+            const timestamp = new Date(data.timestamp).toLocaleTimeString();
+            
+            // Update price chart
+            priceChart.data.labels.push(timestamp);
+            priceChart.data.datasets[0].data.push(data.price);
+            
+            // Keep only last 50 data points
+            if (priceChart.data.labels.length > 50) {
+                priceChart.data.labels.shift();
+                priceChart.data.datasets[0].data.shift();
+            }
+            
+            priceChart.update('none');
+            
+            // Update volume chart
+            volumeChart.data.labels.push(timestamp);
+            volumeChart.data.datasets[0].data.push(data.volume);
+            
+            if (volumeChart.data.labels.length > 50) {
+                volumeChart.data.labels.shift();
+                volumeChart.data.datasets[0].data.shift();
+            }
+            
+            volumeChart.update('none');
+        }
+
+        // Show notification
+        function showNotification(message, severity = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 p-4 rounded-md shadow-lg z-50 ${
+                severity === 'critical' ? 'bg-red-500' :
+                severity === 'high' ? 'bg-orange-500' :
+                severity === 'medium' ? 'bg-yellow-500' :
+                'bg-blue-500'
+            } text-white`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+
+        // Setup refresh button
+        function setupRefreshButton() {
+            document.getElementById('refresh-btn').addEventListener('click', function() {
+                loadDashboardData();
+            });
+        }
+    </script>
+</body>
+</html> 

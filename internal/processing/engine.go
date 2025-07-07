@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/saintparish4/realtime-data-pipeline/internal/models"
+	"github.com/saintparish4/realtime-data-pipeline/internal/observability"
 	"github.com/saintparish4/realtime-data-pipeline/pkg/kafka"
 	"github.com/saintparish4/realtime-data-pipeline/pkg/redis"
 )
@@ -22,6 +23,7 @@ type Engine struct {
 	producer        *kafka.Producer
 	redisClient     *redis.Client
 	windowProcessor *WindowProcessor
+	obsService      *observability.Service
 
 	// Performance optimizations
 	cache    map[string]cacheEntry
@@ -35,12 +37,13 @@ type cacheEntry struct {
 }
 
 // NewEngine creates a new processing engine with the given dependencies.
-func NewEngine(consumer *kafka.Consumer, producer *kafka.Producer, redisClient *redis.Client) *Engine {
+func NewEngine(consumer *kafka.Consumer, producer *kafka.Producer, redisClient *redis.Client, obsService *observability.Service) *Engine {
 	return &Engine{
 		consumer:        consumer,
 		producer:        producer,
 		redisClient:     redisClient,
 		windowProcessor: NewWindowProcessor(redisClient),
+		obsService:      obsService,
 		cache:           make(map[string]cacheEntry),
 		cacheTTL:        30 * time.Second, // Cache for 30 seconds
 	}
@@ -56,31 +59,98 @@ func (e *Engine) Start(ctx context.Context) error {
 // It unmarshals the raw data, validates it, processes it, stores it in Redis,
 // and publishes the processed result.
 func (e *Engine) handleMessage(ctx context.Context, key, value []byte) error {
+	startTime := time.Now()
+
 	var rawData models.RawCryptoData
 	if err := json.Unmarshal(value, &rawData); err != nil {
+		// Record error metric
+		if e.obsService != nil {
+			e.obsService.RecordErrorMetric(ctx, "unmarshal_error", err.Error(), map[string]string{
+				"symbol": string(key),
+			})
+		}
 		return fmt.Errorf("failed to unmarshal raw data: %w", err)
 	}
 
 	// Validate the raw data
 	if err := rawData.Validate(); err != nil {
+		// Record error metric
+		if e.obsService != nil {
+			e.obsService.RecordErrorMetric(ctx, "validation_error", err.Error(), map[string]string{
+				"symbol": rawData.Symbol,
+			})
+		}
 		return fmt.Errorf("invalid raw data: %w", err)
+	}
+
+	// Record price and volume metrics
+	if e.obsService != nil {
+		// Record price metric
+		priceMetric := &models.TimeSeriesMetric{
+			Symbol:    rawData.Symbol,
+			Type:      models.MetricTypePrice,
+			Value:     rawData.Price,
+			Timestamp: rawData.Timestamp,
+			Labels: map[string]string{
+				"source": "kafka",
+			},
+		}
+		e.obsService.RecordMetric(ctx, priceMetric)
+
+		// Record volume metric
+		volumeMetric := &models.TimeSeriesMetric{
+			Symbol:    rawData.Symbol,
+			Type:      models.MetricTypeVolume,
+			Value:     rawData.Volume,
+			Timestamp: rawData.Timestamp,
+			Labels: map[string]string{
+				"source": "kafka",
+			},
+		}
+		e.obsService.RecordMetric(ctx, volumeMetric)
 	}
 
 	// Process the data
 	processedData, err := e.processData(ctx, &rawData)
 	if err != nil {
+		// Record error metric
+		if e.obsService != nil {
+			e.obsService.RecordErrorMetric(ctx, "processing_error", err.Error(), map[string]string{
+				"symbol": rawData.Symbol,
+			})
+		}
 		return fmt.Errorf("failed to process data: %w", err)
 	}
 
 	// Store in Redis for real-time queries
 	if err := e.storeInRedis(ctx, processedData); err != nil {
 		log.Printf("Failed to store data in Redis: %v", err)
+		// Record error metric
+		if e.obsService != nil {
+			e.obsService.RecordErrorMetric(ctx, "redis_storage_error", err.Error(), map[string]string{
+				"symbol": processedData.Symbol,
+			})
+		}
 		// Continue processing even if Redis storage fails
 	}
 
 	// Publish processed data
 	if err := e.producer.Publish(ctx, processedData.Symbol, processedData); err != nil {
+		// Record error metric
+		if e.obsService != nil {
+			e.obsService.RecordErrorMetric(ctx, "kafka_publish_error", err.Error(), map[string]string{
+				"symbol": processedData.Symbol,
+			})
+		}
 		return fmt.Errorf("failed to publish processed data: %w", err)
+	}
+
+	// Record processing latency
+	if e.obsService != nil {
+		processingTime := time.Since(startTime)
+		e.obsService.RecordLatencyMetric(ctx, "message_processing", processingTime, map[string]string{
+			"symbol": rawData.Symbol,
+		})
 	}
 
 	return nil

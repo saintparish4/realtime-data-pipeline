@@ -20,9 +20,27 @@ type Config struct {
 	Kafka struct {
 		Brokers []string `yaml:"brokers"`
 		Topics  struct {
+			// Observability Event Streaming Topics
+			ObservabilityEvents string `yaml:"observability_events"`
+			Logs                string `yaml:"logs"`
+			Metrics             string `yaml:"metrics"`
+			Alerts              string `yaml:"alerts"`
+			Traces              string `yaml:"traces"`
+			HealthChecks        string `yaml:"health_checks"`
+
+			// Legacy topics for backward compatibility
 			RawData       string `yaml:"raw_data"`
 			ProcessedData string `yaml:"processed_data"`
 		} `yaml:"topics"`
+
+		EventStreaming struct {
+			BatchSize         int    `yaml:"batch_size"`
+			BatchTimeout      string `yaml:"batch_timeout"`
+			MaxMessageSize    string `yaml:"max_message_size"`
+			RetentionPolicy   string `yaml:"retention_policy"`
+			ReplicationFactor int    `yaml:"replication_factor"`
+			Partitions        int    `yaml:"partitions"`
+		} `yaml:"event_streaming"`
 	} `yaml:"kafka"`
 
 	Redis struct {
@@ -40,6 +58,15 @@ type Config struct {
 		SSLMode  string `yaml:"ssl_mode"`
 	} `yaml:"postgres"`
 
+	TimescaleDB struct {
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		User     string `yaml:"user"`
+		Password string `yaml:"password"`
+		Database string `yaml:"database"`
+		SSLMode  string `yaml:"ssl_mode"`
+	} `yaml:"timescaledb"`
+
 	WebSocket struct {
 		BinanceURL  string `yaml:"binance_url"`
 		CoinbaseURL string `yaml:"coinbase_url"`
@@ -48,6 +75,79 @@ type Config struct {
 	Metrics struct {
 		PrometheusPort int `yaml:"prometheus_port"`
 	} `yaml:"metrics"`
+
+	Observability struct {
+		MetricsRetention      string `yaml:"metrics_retention"`       // e.g., "30d", "7d"
+		AlertCheckInterval    string `yaml:"alert_check_interval"`    // e.g., "30s", "1m"
+		NotificationRateLimit string `yaml:"notification_rate_limit"` // e.g., "5m", "1h"
+		CleanupInterval       string `yaml:"cleanup_interval"`        // e.g., "24h", "12h"
+
+		EventStreaming struct {
+			CorrelationIDHeader       string  `yaml:"correlation_id_header"`
+			TraceIDHeader             string  `yaml:"trace_id_header"`
+			SpanIDHeader              string  `yaml:"span_id_header"`
+			ServiceName               string  `yaml:"service_name"`
+			DefaultEventLevel         string  `yaml:"default_event_level"`
+			EnableDistributedTracing  bool    `yaml:"enable_distributed_tracing"`
+			EnableCorrelationTracking bool    `yaml:"enable_correlation_tracking"`
+			EventProcessingTimeout    string  `yaml:"event_processing_timeout"`
+			MaxEventSize              string  `yaml:"max_event_size"`
+			EnableEventValidation     bool    `yaml:"enable_event_validation"`
+			AlertEventRetention       string  `yaml:"alert_event_retention"`
+			AlertCorrelationWindow    string  `yaml:"alert_correlation_window"`
+			TraceSamplingRate         float64 `yaml:"trace_sampling_rate"`
+			TraceRetention            string  `yaml:"trace_retention"`
+			EnableTraceAggregation    bool    `yaml:"enable_trace_aggregation"`
+		} `yaml:"event_streaming"`
+	} `yaml:"observability"`
+
+	Notifications struct {
+		Email struct {
+			SMTPHost    string `yaml:"smtp_host"`
+			SMTPPort    int    `yaml:"smtp_port"`
+			Username    string `yaml:"username"`
+			Password    string `yaml:"password"`
+			FromAddress string `yaml:"from_address"`
+			FromName    string `yaml:"from_name"`
+			UseTLS      bool   `yaml:"use_tls"`
+		} `yaml:"email"`
+
+		Slack struct {
+			WebhookURL string `yaml:"webhook_url"`
+			Channel    string `yaml:"channel"`
+			Username   string `yaml:"username"`
+			IconEmoji  string `yaml:"icon_emoji"`
+		} `yaml:"slack"`
+
+		Webhooks []struct {
+			Name    string            `yaml:"name"`
+			URL     string            `yaml:"url"`
+			Method  string            `yaml:"method"`
+			Headers map[string]string `yaml:"headers"`
+			Timeout string            `yaml:"timeout"`
+			Enabled bool              `yaml:"enabled"`
+		} `yaml:"webhooks"`
+
+		RateLimit struct {
+			MaxPerMinute int    `yaml:"max_per_minute"`
+			MaxPerHour   int    `yaml:"max_per_hour"`
+			Window       string `yaml:"window"`
+		} `yaml:"rate_limit"`
+
+		Retry struct {
+			MaxAttempts int    `yaml:"max_attempts"`
+			Backoff     string `yaml:"backoff"`
+		} `yaml:"retry"`
+	} `yaml:"notifications"`
+
+	Tracing struct {
+		ServiceName       string  `yaml:"service_name"`
+		SamplingRate      float64 `yaml:"sampling_rate"`
+		MaxTraceDuration  string  `yaml:"max_trace_duration"`
+		TraceRetention    string  `yaml:"trace_retention"`
+		EnableCorrelation bool    `yaml:"enable_correlation"`
+		EnableAggregation bool    `yaml:"enable_aggregation"`
+	} `yaml:"tracing"`
 }
 
 // Load reads and parses the configuration file from the given path.

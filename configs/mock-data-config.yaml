@@ -1,0 +1,121 @@
+# Mock Data Configuration
+# This file configures the realistic mock data generation for portfolio demonstration
+
+mock_data:
+  # Data generation settings
+  historical_data_points: 1000  # Number of data points per symbol
+  historical_time_range: 168    # Time range in hours (1 week)
+  alert_rules_count: 15         # Number of alert rules to generate
+  sample_alerts_count: 25       # Number of sample alerts to generate
+  
+  # Cryptocurrency symbols to generate data for
+  symbols:
+    - BTCUSDT   # Bitcoin
+    - ETHUSDT   # Ethereum
+    - ADAUSDT   # Cardano
+    - SOLUSDT   # Solana
+    - DOTUSDT   # Polkadot
+    - LINKUSDT  # Chainlink
+    - UNIUSDT   # Uniswap
+    - AVAXUSDT  # Avalanche
+    - MATICUSDT # Polygon
+    - ATOMUSDT  # Cosmos
+
+  # Base prices for each symbol (realistic starting points)
+  base_prices:
+    BTCUSDT: 45000.0   # Realistic Bitcoin price
+    ETHUSDT: 3200.0    # Realistic Ethereum price
+    ADAUSDT: 0.45      # Realistic Cardano price
+    SOLUSDT: 95.0      # Realistic Solana price
+    DOTUSDT: 7.2       # Realistic Polkadot price
+    LINKUSDT: 15.5     # Realistic Chainlink price
+    UNIUSDT: 8.8       # Realistic Uniswap price
+    AVAXUSDT: 25.0     # Realistic Avalanche price
+    MATICUSDT: 0.85    # Realistic Polygon price
+    ATOMUSDT: 9.5      # Realistic Cosmos price
+
+  # Base volumes for each symbol (realistic trading volumes)
+  base_volumes:
+    BTCUSDT: 2500000.0  # Realistic Bitcoin volume
+    ETHUSDT: 1800000.0  # Realistic Ethereum volume
+    ADAUSDT: 500000.0   # Realistic Cardano volume
+    SOLUSDT: 800000.0   # Realistic Solana volume
+    DOTUSDT: 300000.0   # Realistic Polkadot volume
+    LINKUSDT: 400000.0  # Realistic Chainlink volume
+    UNIUSDT: 350000.0   # Realistic Uniswap volume
+    AVAXUSDT: 600000.0  # Realistic Avalanche volume
+    MATICUSDT: 200000.0 # Realistic Polygon volume
+    ATOMUSDT: 250000.0  # Realistic Cosmos volume
+
+  # Market movement parameters
+  market_movements:
+    price_volatility: 0.02    # ±1% price change per data point
+    volume_volatility: 0.3    # ±15% volume variation
+    price_change_24h: 0.1     # ±5% 24h price change
+    volume_change_24h: 0.5    # ±25% 24h volume change
+    moving_avg_variation: 0.01 # ±0.5% moving average variation
+
+  # Alert rule categories
+  alert_categories:
+    - price_monitoring      # Price breakouts, support/resistance
+    - volume_monitoring     # Volume spikes, drops
+    - volatility_monitoring # Price volatility alerts
+    - anomaly_detection     # Statistical anomalies
+    - trend_analysis        # Pattern recognition
+    - correlation_analysis  # Cross-asset correlations
+    - sentiment_analysis    # Market sentiment indicators
+
+  # Realistic alert scenarios
+  alert_scenarios:
+    - name: "BTC Price Breakout"
+      description: "Bitcoin breaks above $50,000 resistance level"
+      severity: "warning"
+      symbol: "BTCUSDT"
+      condition: "price > 50000"
+      threshold: 50000
+      
+    - name: "ETH Support Break"
+      description: "Ethereum breaks below $3,000 support level"
+      severity: "critical"
+      symbol: "ETHUSDT"
+      condition: "price < 3000"
+      threshold: 3000
+      
+    - name: "SOL Extreme Volatility"
+      description: "Solana price changes by more than 15% in 4 hours"
+      severity: "critical"
+      symbol: "SOLUSDT"
+      condition: "price_change_4h > 15"
+      threshold: 15
+      
+    - name: "BTC Volume Spike"
+      description: "Bitcoin volume increases by more than 100% in 1 hour"
+      severity: "info"
+      symbol: "BTCUSDT"
+      condition: "volume_change_1h > 100"
+      threshold: 100
+
+# Data quality settings
+data_quality:
+  # Ensure realistic constraints
+  min_price_multiplier: 0.1    # Price won't drop below 10% of base
+  min_volume_multiplier: 0.1   # Volume won't drop below 10% of base
+  max_price_multiplier: 10.0   # Price won't exceed 10x base
+  max_volume_multiplier: 5.0   # Volume won't exceed 5x base
+  
+  # Time distribution
+  time_distribution: "uniform" # uniform, random, or market_hours
+  market_hours_only: false     # Generate data only during market hours
+  
+  # Data consistency
+  ensure_positive_prices: true
+  ensure_positive_volumes: true
+  validate_timestamps: true
+
+# Documentation
+documentation:
+  purpose: "Portfolio demonstration with realistic mock data"
+  note: "This is mock data for demonstration purposes. Real implementation would use live exchange APIs."
+  data_source: "Generated programmatically with realistic market patterns"
+  update_frequency: "Static - generated once for demo"
+  symbols_explanation: "Major cryptocurrencies with realistic market caps and trading volumes" 

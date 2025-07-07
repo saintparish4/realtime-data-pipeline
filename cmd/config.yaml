@@ -5,8 +5,26 @@ server:
 kafka:
   brokers: ["localhost:9092"]
   topics:
+    # Observability Event Streaming Topics
+    observability_events: "observability.events"
+    logs: "observability.logs"
+    metrics: "observability.metrics"
+    alerts: "observability.alerts"
+    traces: "observability.traces"
+    health_checks: "observability.health"
+    
+    # Legacy topics for backward compatibility
     raw_data: "crypto.raw"
     processed_data: "crypto.processed"
+  
+  # Event streaming configuration
+  event_streaming:
+    batch_size: 100
+    batch_timeout: "1s"
+    max_message_size: "1MB"
+    retention_policy: "7d"
+    replication_factor: 3
+    partitions: 6
 
 redis:
   address: "localhost:6379"
@@ -18,7 +36,14 @@ postgres:
   port: 5432
   user: "postgres"
   password: "postgres"
-  database: "pipline"
+  database: "pipeline"
+
+timescaledb:
+  host: "localhost"
+  port: 5433
+  user: "postgres"
+  password: "postgres"
+  database: "timeseries"
 
 websocket:
   binance_url: "wss://fstream.binance.com:9443/ws/btcusdt@ticker"
@@ -26,6 +51,83 @@ websocket:
 
 metrics:
   prometheus_port: 9090
+
+observability:
+  metrics_retention: "30d"
+  alert_check_interval: "30s"
+  notification_rate_limit: "5m"
+  cleanup_interval: "24h"
+  
+  # Event streaming observability settings
+  event_streaming:
+    correlation_id_header: "X-Correlation-ID"
+    trace_id_header: "X-Trace-ID"
+    span_id_header: "X-Span-ID"
+    service_name: "realtime-data-pipeline"
+    
+    # Event filtering and routing
+    default_event_level: "info"
+    enable_distributed_tracing: true
+    enable_correlation_tracking: true
+    
+    # Event processing
+    event_processing_timeout: "5s"
+    max_event_size: "1MB"
+    enable_event_validation: true
+    
+    # Alert event settings
+    alert_event_retention: "90d"
+    alert_correlation_window: "1h"
+    
+    # Trace event settings
+    trace_sampling_rate: 0.1  # 10% sampling
+    trace_retention: "7d"
+    enable_trace_aggregation: true
+
+# Notification settings
+notifications:
+  email:
+    smtp_host: "localhost"
+    smtp_port: 587
+    username: ""
+    password: ""
+    from_address: "alerts@pipeline.local"
+    from_name: "Data Pipeline"
+    use_tls: false
+  
+  slack:
+    webhook_url: ""
+    channel: "#alerts"
+    username: "Data Pipeline Bot"
+    icon_emoji: ":warning:"
+  
+  webhooks:
+    - name: "webhook1"
+      url: "http://localhost:8081/webhook"
+      method: "POST"
+      headers:
+        Content-Type: "application/json"
+        Authorization: "Bearer token"
+      timeout: "5s"
+      enabled: false
+  
+  rate_limit:
+    max_per_minute: 60
+    max_per_hour: 1000
+    window: "1m"
+  
+  retry:
+    max_attempts: 3
+    backoff: "5s"
+
+# Tracing settings
+tracing:
+  service_name: "realtime-data-pipeline"
+  sampling_rate: 0.1
+  max_trace_duration: "5m"
+  trace_retention: "7d"
+  enable_correlation: true
+  enable_aggregation: true
 
 
 
