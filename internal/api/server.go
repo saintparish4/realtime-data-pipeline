@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +35,28 @@ type Server struct {
 	observability *observability.Service
 	upgrader      websocket.Upgrader
 	wsConnections map[string]*websocket.Conn
+
+	// Multiplexing and batching fields
+	subscriptions map[*websocket.Conn]map[string]bool // client -> set of symbols
+	subMu         sync.RWMutex
+	batchInterval time.Duration
+	batchChan     chan *priceUpdate
+	shutdownChan  chan struct{}
+
+	clientSendChans map[*websocket.Conn]chan []*priceUpdate // NEW: per-client send channel
+}
+
+type subscriptionRequest struct {
+	Action  string   `json:"action"`
+	Symbols []string `json:"symbols"`
+}
+
+type priceUpdate struct {
+	Symbol    string      `json:"symbol"`
+	Price     interface{} `json:"price"`
+	Volume    interface{} `json:"volume"`
+	Timestamp interface{} `json:"timestamp"`
+	Source    string      `json:"source"`
 }
 
 // NewServer creates a new API server instance
@@ -51,18 +75,24 @@ func NewServer(cfg *config.Config, redisClient *redis.Client, postgresDB *databa
 	}
 
 	server := &Server{
-		config:        cfg,
-		router:        router,
-		redisClient:   redisClient,
-		postgresDB:    postgresDB,
-		timescaleDB:   timescaleDB,
-		kafkaProducer: kafkaProducer,
-		kafkaConsumer: kafkaConsumer,
-		alertManager:  alertManager,
-		metricsEngine: metricsEngine,
-		observability: obsService,
-		upgrader:      upgrader,
-		wsConnections: make(map[string]*websocket.Conn),
+		config:          cfg,
+		router:          router,
+		redisClient:     redisClient,
+		postgresDB:      postgresDB,
+		timescaleDB:     timescaleDB,
+		kafkaProducer:   kafkaProducer,
+		kafkaConsumer:   kafkaConsumer,
+		alertManager:    alertManager,
+		metricsEngine:   metricsEngine,
+		observability:   obsService,
+		upgrader:        upgrader,
+		wsConnections:   make(map[string]*websocket.Conn),
+		subscriptions:   make(map[*websocket.Conn]map[string]bool),
+		subMu:           sync.RWMutex{},
+		batchInterval:   50 * time.Millisecond, // tune as needed
+		batchChan:       make(chan *priceUpdate, 10000),
+		shutdownChan:    make(chan struct{}),
+		clientSendChans: make(map[*websocket.Conn]chan []*priceUpdate), // NEW
 	}
 
 	// Setup routes
@@ -73,6 +103,9 @@ func NewServer(cfg *config.Config, redisClient *redis.Client, postgresDB *databa
 		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler: router,
 	}
+
+	// Start Kafka consumer batcher
+	go server.startKafkaBatcher(kafkaConsumer)
 
 	return server, nil
 }
@@ -551,6 +584,7 @@ func (s *Server) getEvents(c *gin.Context) {
 
 // ===== WEBSOCKET HANDLER =====
 
+// WebSocket handler with multiplexing and batching
 func (s *Server) handleWebSocket(c *gin.Context) {
 	conn, err := s.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -559,25 +593,161 @@ func (s *Server) handleWebSocket(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	// Generate unique connection ID
 	connID := fmt.Sprintf("ws_%d", time.Now().UnixNano())
 	s.wsConnections[connID] = conn
 
-	// Handle WebSocket messages
+	s.subMu.Lock()
+	s.subscriptions[conn] = make(map[string]bool)
+	clientSend := make(chan []*priceUpdate, 10)
+	s.clientSendChans[conn] = clientSend // NEW
+	s.subMu.Unlock()
+
+	go s.clientWriter(conn, clientSend)
+
+	defer func() {
+		s.subMu.Lock()
+		delete(s.subscriptions, conn)
+		delete(s.clientSendChans, conn) // NEW
+		s.subMu.Unlock()
+		delete(s.wsConnections, connID)
+		close(clientSend)
+	}()
+
 	for {
-		messageType, message, err := conn.ReadMessage()
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Printf("WebSocket read error: %v", err)
 			break
 		}
+		// Parse subscription request
+		var req subscriptionRequest
+		if err := json.Unmarshal(message, &req); err != nil {
+			log.Printf("Invalid subscription message: %v", err)
+			continue
+		}
+		s.handleSubscription(conn, req)
+	}
+}
 
-		// Echo message back for now
-		if err := conn.WriteMessage(messageType, message); err != nil {
-			log.Printf("WebSocket write error: %v", err)
-			break
+func (s *Server) handleSubscription(conn *websocket.Conn, req subscriptionRequest) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	if req.Action == "subscribe" {
+		if s.subscriptions[conn] == nil {
+			s.subscriptions[conn] = make(map[string]bool)
+		}
+		for _, sym := range req.Symbols {
+			s.subscriptions[conn][sym] = true
+		}
+	} else if req.Action == "unsubscribe" {
+		for _, sym := range req.Symbols {
+			delete(s.subscriptions[conn], sym)
 		}
 	}
+}
 
-	// Clean up connection
-	delete(s.wsConnections, connID)
+// Batcher: consumes Kafka, batches, and broadcasts
+func (s *Server) startKafkaBatcher(consumer *kafka.Consumer) {
+	ctx := context.Background()
+	batch := make([]*priceUpdate, 0, 100)
+	ticker := time.NewTicker(s.batchInterval)
+	defer ticker.Stop()
+
+	// Start Kafka consumer in background
+	go func() {
+		consumer.ConsumeEvents(ctx, func(_ context.Context, event *kafka.ObservabilityEvent) error {
+			if event.Type != "metric" && event.Type != "raw" {
+				return nil
+			}
+			// Unmarshal event.Data as RawCryptoData
+			var raw models.RawCryptoData
+			dataBytes, err := json.Marshal(event.Data)
+			if err != nil {
+				return nil
+			}
+			if err := json.Unmarshal(dataBytes, &raw); err != nil {
+				return nil
+			}
+			update := &priceUpdate{
+				Symbol:    raw.Symbol,
+				Price:     raw.Price,
+				Volume:    raw.Volume,
+				Timestamp: raw.Timestamp,
+				Source:    raw.Source,
+			}
+			s.batchChan <- update
+			return nil
+		})
+	}()
+
+	for {
+		select {
+		case <-s.shutdownChan:
+			return
+		case <-ticker.C:
+			if len(batch) > 0 {
+				s.broadcastBatch(batch)
+				batch = batch[:0]
+			}
+		case upd := <-s.batchChan:
+			batch = append(batch, upd)
+			if len(batch) >= 1000 {
+				s.broadcastBatch(batch)
+				batch = batch[:0]
+			}
+		}
+	}
+}
+
+// Broadcast batch to all clients based on their subscriptions
+func (s *Server) broadcastBatch(batch []*priceUpdate) {
+	s.subMu.RLock()
+	defer s.subMu.RUnlock()
+	if len(batch) == 0 {
+		return
+	}
+	// Group updates by symbol
+	symbolMap := make(map[string][]*priceUpdate)
+	for _, upd := range batch {
+		symbolMap[upd.Symbol] = append(symbolMap[upd.Symbol], upd)
+	}
+	for conn, subs := range s.subscriptions {
+		var clientBatch []*priceUpdate
+		for sym := range subs {
+			clientBatch = append(clientBatch, symbolMap[sym]...)
+		}
+		if len(clientBatch) > 0 {
+			// Non-blocking send
+			select {
+			case s.getClientSendChan(conn) <- clientBatch:
+			default:
+				// Drop if client is slow
+			}
+		}
+	}
+}
+
+// Helper to get the send channel for a client
+func (s *Server) getClientSendChan(conn *websocket.Conn) chan []*priceUpdate {
+	s.subMu.RLock()
+	defer s.subMu.RUnlock()
+	return s.clientSendChans[conn]
+}
+
+// Client writer goroutine
+func (s *Server) clientWriter(conn *websocket.Conn, send <-chan []*priceUpdate) {
+	for batch := range send {
+		if len(batch) == 0 {
+			continue
+		}
+		msg, err := json.Marshal(batch)
+		if err != nil {
+			continue
+		}
+		conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Printf("WebSocket write error: %v", err)
+			return
+		}
+	}
 }

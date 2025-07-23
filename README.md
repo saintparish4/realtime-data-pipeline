@@ -37,6 +37,7 @@ Exchanges → WebSocket → Kafka → Processing Engine → APIs
                             Redis + TimescaleDB + PostgreSQL
 ```
 
+
 ## Current Status
 
 ### ✅ Complete
